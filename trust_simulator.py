@@ -14,6 +14,8 @@ matplotlib.use('TkAgg')
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.pyplot as plt
 from typing import List
+from claude_prompt import generate_claude_prompt, call_claude
+from datetime import datetime
 
 # --- CONFIGURATION ---
 CONFIG = {
@@ -157,7 +159,7 @@ class Agent:
 # --- PAYOFF MATRIX LOGIC ---
 # Payoff Matrix: (Agent Move, Opponent Move) -> (Agent Points, Opponent Points)
 PAYOFF_MATRIX = {
-    ('TRUST', 'TRUST'): (1, 1),    # Both Trust
+    ('TRUST', 'TRUST'): (2, 2),    # Both Trust
     ('TRUST', 'CHEAT'): (-1, 3),   # Agent Trust, Opponent Cheat
     ('CHEAT', 'TRUST'): (3, -1),   # Agent Cheat, Opponent Trust
     ('CHEAT', 'CHEAT'): (0, 0),    # Both Cheat
@@ -215,13 +217,32 @@ def evolve_population(agents, eliminate_n, clone_n):
 def strategy_distribution(agents):
     return dict(Counter(a.strategy_name for a in agents))
 
+def log_round_to_csv(row, csv_file='trust_sim_results.csv'):
+    header = [
+        'generation', 'match_id', 'round', 'main_agent_strategy', 'opponent_strategy',
+        'main_agent_action', 'opponent_action', 'main_agent_payoff', 'opponent_payoff',
+        'main_agent_total_score', 'opponent_total_score', 'claude_reasoning', 'history_included', 'timestamp',
+        'payoff_matrix'  # New field
+    ]
+    file_exists = os.path.isfile(csv_file)
+    write_header = not file_exists or os.path.getsize(csv_file) == 0
+    # Add payoff_matrix to the row
+    import json
+    row = dict(row)  # Make a copy to avoid mutating input
+    row['payoff_matrix'] = json.dumps(PAYOFF_MATRIX)
+    with open(csv_file, 'a', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=header)
+        if write_header:
+            writer.writeheader()
+        writer.writerow(row)
+
 # --- GUI ---
 class TrustSimGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Evolution of Trust Simulator")
-        self.root.geometry("800x600")
-        self.main_container = ttk.Frame(self.root)
+        self.root.geometry("900x650")
+        self.main_container = tk.Frame(self.root, bg="#222222")
         self.main_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         self.running = False
@@ -231,6 +252,12 @@ class TrustSimGUI:
         self.max_generations = CONFIG['generations']
         self.status_var = tk.StringVar()
         self.status_var.set("Ready.")
+        self.claude_reason_var = tk.StringVar()
+        self.claude_reason_var.set("")
+        self.claude_move_var = tk.StringVar()
+        self.claude_move_var.set("")
+        self.match_round_var = tk.StringVar()
+        self.match_round_var.set("")
 
         self._build_widgets()
         self.reset_simulation()
@@ -238,7 +265,7 @@ class TrustSimGUI:
 
     def _build_widgets(self):
         # Top control panel
-        top_frame = ttk.Frame(self.main_container)
+        top_frame = tk.Frame(self.main_container, bg="#222222")
         top_frame.pack(side=tk.TOP, fill=tk.X, pady=(0, 10))
 
         self.start_btn = ttk.Button(top_frame, text="Start Simulation", command=self.start_simulation, width=15)
@@ -253,38 +280,49 @@ class TrustSimGUI:
         self.back_btn.pack(side=tk.LEFT, padx=5)
         self.reset_btn = ttk.Button(top_frame, text="Reset Simulation", command=self.reset_simulation, width=15)
         self.reset_btn.pack(side=tk.LEFT, padx=5)
-        status_label = ttk.Label(top_frame, textvariable=self.status_var, font=("Arial", 12))
+
+        # Match/Round info prominently at top center
+        match_round_label = tk.Label(self.main_container, textvariable=self.match_round_var, font=("Arial", 16, "bold"), fg="white", bg="#222222")
+        match_round_label.pack(side=tk.TOP, pady=(0, 10))
+
+        status_label = tk.Label(top_frame, textvariable=self.status_var, font=("Arial", 12), fg="white", bg="#222222")
         status_label.pack(side=tk.LEFT, padx=10)
 
         # Main layout: left (agent), center (matrix), right (opponent)
-        main_frame = ttk.Frame(self.main_container)
+        main_frame = tk.Frame(self.main_container, bg="#222222")
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         # Stick figure for Main Agent (left)
-        self.agent_canvas = tk.Canvas(main_frame, width=70, height=120, bg='white', highlightthickness=0)
+        self.agent_canvas = tk.Canvas(main_frame, width=70, height=120, bg='#222222', highlightthickness=0)
         self.agent_canvas.grid(row=0, column=0, padx=10, pady=10)
         self._draw_stick_figure(self.agent_canvas)
-        self.agent_name_label = ttk.Label(main_frame, text="Main Agent", font=("Arial", 12))
+        self.agent_name_label = tk.Label(main_frame, text="Main Agent", font=("Arial", 12, "bold"), fg="white", bg="#222222")
         self.agent_name_label.grid(row=1, column=0)
-        self.agent_total_label = ttk.Label(main_frame, text="Total Points: 0", font=("Arial", 11))
+        self.agent_total_label = tk.Label(main_frame, text="Total Points: 0", font=("Arial", 11, "bold"), fg="white", bg="#222222")
         self.agent_total_label.grid(row=2, column=0)
-        self.agent_round_label = ttk.Label(main_frame, text="", font=("Arial", 14))
+        self.agent_round_label = tk.Label(main_frame, text="", font=("Arial", 14), fg="white", bg="#222222")
         self.agent_round_label.grid(row=0, column=0, sticky='s', pady=(170, 0))
+        # Claude's move (large, bold, white)
+        self.claude_move_label = tk.Label(main_frame, textvariable=self.claude_move_var, font=("Arial", 22, "bold"), fg="white", bg="#222222")
+        self.claude_move_label.grid(row=3, column=0, pady=(10, 0))
+        # Claude's reasoning (bold, white)
+        self.claude_reason_label = tk.Label(main_frame, textvariable=self.claude_reason_var, font=("Arial", 12, "bold"), fg="white", bg="#222222")
+        self.claude_reason_label.grid(row=4, column=0, pady=(5, 0))
 
         # Center matrix with labels
-        matrix_outer = ttk.Frame(main_frame)
-        matrix_outer.grid(row=0, column=1, rowspan=2, padx=20, pady=10)
+        matrix_outer = tk.Frame(main_frame, bg="#222222")
+        matrix_outer.grid(row=0, column=1, rowspan=5, padx=20, pady=10)
 
         # Top labels (Opponent)
-        self.top_label_trust = ttk.Label(matrix_outer, text="Opponent TRUSTS", font=("Arial", 11))
+        self.top_label_trust = tk.Label(matrix_outer, text="Opponent TRUSTS", font=("Arial", 11, "bold"), fg="white", bg="#222222")
         self.top_label_trust.grid(row=0, column=1, padx=5, pady=2)
-        self.top_label_cheat = ttk.Label(matrix_outer, text="Opponent CHEATS", font=("Arial", 11))
+        self.top_label_cheat = tk.Label(matrix_outer, text="Opponent CHEATS", font=("Arial", 11, "bold"), fg="white", bg="#222222")
         self.top_label_cheat.grid(row=0, column=2, padx=5, pady=2)
 
         # Side labels (Agent)
-        self.side_label_trust = ttk.Label(matrix_outer, text="Agent TRUSTS", font=("Arial", 11))
+        self.side_label_trust = tk.Label(matrix_outer, text="Agent TRUSTS", font=("Arial", 11, "bold"), fg="white", bg="#222222")
         self.side_label_trust.grid(row=1, column=0, padx=5, pady=10)
-        self.side_label_cheat = ttk.Label(matrix_outer, text="Agent CHEATS", font=("Arial", 11))
+        self.side_label_cheat = tk.Label(matrix_outer, text="Agent CHEATS", font=("Arial", 11, "bold"), fg="white", bg="#222222")
         self.side_label_cheat.grid(row=2, column=0, padx=5, pady=10)
 
         # Matrix cells
@@ -296,19 +334,19 @@ class TrustSimGUI:
                 def sign(val):
                     return f"+{val}" if val > 0 else (f"{val}" if val < 0 else "0")
                 label = tk.Label(matrix_outer, text=f"{self._move_name(agent_move)} vs {self._move_name(opponent_move)}\nA: {sign(payoff[0])}, O: {sign(payoff[1])}",
-                                 width=16, height=4, borderwidth=2, relief="groove", bg='white', font=("Arial", 13))
+                                 width=16, height=4, borderwidth=2, relief="groove", bg="#333333", fg="white", font=("Arial", 13, "bold"))
                 label.grid(row=1+i, column=1+j, padx=5, pady=5)
                 self.matrix_labels[i][j] = label  # type: ignore
 
         # Stick figure for Opponent (right)
-        self.opp_canvas = tk.Canvas(main_frame, width=70, height=120, bg='white', highlightthickness=0)
+        self.opp_canvas = tk.Canvas(main_frame, width=70, height=120, bg='#222222', highlightthickness=0)
         self.opp_canvas.grid(row=0, column=2, padx=10, pady=10)
         self._draw_stick_figure(self.opp_canvas)
-        self.opp_name_label = ttk.Label(main_frame, text="Opponent", font=("Arial", 12))
+        self.opp_name_label = tk.Label(main_frame, text="Opponent", font=("Arial", 12, "bold"), fg="white", bg="#222222")
         self.opp_name_label.grid(row=1, column=2)
-        self.opp_total_label = ttk.Label(main_frame, text="Total Points: 0", font=("Arial", 11))
+        self.opp_total_label = tk.Label(main_frame, text="Total Points: 0", font=("Arial", 11, "bold"), fg="white", bg="#222222")
         self.opp_total_label.grid(row=2, column=2)
-        self.opp_round_label = ttk.Label(main_frame, text="", font=("Arial", 14))
+        self.opp_round_label = tk.Label(main_frame, text="", font=("Arial", 14), fg="white", bg="#222222")
         self.opp_round_label.grid(row=0, column=2, sticky='s', pady=(170, 0))
 
     def _draw_stick_figure(self, canvas):
@@ -359,6 +397,9 @@ class TrustSimGUI:
         self.opp_total_label.config(text="Total Points: 0")
         self.agent_round_label.config(text="")
         self.opp_round_label.config(text="")
+        self.claude_move_var.set("")
+        self.claude_reason_var.set("")
+        self.match_round_var.set("")
         self.highlight_cell('TRUST', 'TRUST')
         print("Simulation reset complete")
 
@@ -451,35 +492,101 @@ class TrustSimGUI:
                 return 'red'
             else:
                 return 'gray'
-        self.agent_round_label.configure(text=f"{('+' if payoff_agent >= 0 else '')}{payoff_agent}", foreground=payoff_color(payoff_agent))
-        self.opp_round_label.configure(text=f"{('+' if payoff_opp >= 0 else '')}{payoff_opp}", foreground=payoff_color(payoff_opp))
+        self.agent_round_label.config(text=f"{('+' if payoff_agent >= 0 else '')}{payoff_agent}", fg=payoff_color(payoff_agent))
+        self.opp_round_label.config(text=f"{('+' if payoff_opp >= 0 else '')}{payoff_opp}", fg=payoff_color(payoff_opp))
+        # Show Claude's move and reasoning in bold white
+        self.claude_move_var.set(f"Claude: {round_data['agent_move']}")
+        self.claude_reason_var.set(round_data.get('reasoning', ''))
+        # Show match/round info at top center
+        self.match_round_var.set(f"Match {match.get('opponent_index', 0)+1} | Round {round_data['round']}")
         self.status_var.set(f"Gen {self.generation} | Match {self.current_match_idx+1}/{len(self.match_history)} | Round {self.current_round_idx+1}/{len(match['rounds'])}")
 
     def _run_simulation(self):
         print("Simulation thread started")
-        while self.running and self.generation < self.max_generations:
+        max_games = 50
+        games_played = 0
+        while self.running and self.generation < self.max_generations and games_played < max_games:
             self.generation += 1
             self.status_var.set(f"Running generation {self.generation}/{self.max_generations}")
-            # Run tournament and record all matches/rounds
-            self.match_history = run_tournament_record(self.agents, CONFIG['rounds_per_game'])
-            self.current_match_idx = 0
-            self.current_round_idx = 0
-            total_matches = len(self.match_history)
-            while self.current_match_idx < total_matches and self.running:
-                match = self.match_history[self.current_match_idx]
-                rounds = match['rounds']
-                for r_idx, round_data in enumerate(rounds):
-                    if not self.running:
+            agents = self.agents
+            matches = []
+            for i, opponent in enumerate(agents):
+                if not self.running or games_played >= max_games:
+                    break
+                match_history = []
+                agent_score = 0
+                opponent_score = 0
+                rounds = random.randint(*CONFIG['rounds_per_game']) if isinstance(CONFIG['rounds_per_game'], tuple) else CONFIG['rounds_per_game']
+                match_id = f"{self.generation}_{i+1}"
+                for round_num in range(1, rounds+1):
+                    if not self.running or games_played >= max_games:
                         break
-                    while self.paused:
-                        time.sleep(0.05)
-                    self.current_round_idx = r_idx
+                    prompt_history = [
+                        {
+                            'round': idx+1,
+                            'agent_move': h['agent_move'],
+                            'opponent_move': h['opponent_move'],
+                            'agent_payoff': h['agent_payoff'],
+                            'opponent_payoff': h['opponent_payoff']
+                        } for idx, h in enumerate(match_history)
+                    ]
+                    prompt = generate_claude_prompt(prompt_history)
+                    try:
+                        agent_move, reasoning = call_claude(prompt)
+                    except Exception as e:
+                        self.root.after(0, lambda: self.claude_reason_var.set(f"Claude error: {e}"))
+                        self.running = False
+                        return
+                    opponent_move = opponent.strategy.decide([
+                        (h['agent_move'], h['opponent_move']) for h in match_history
+                    ])
+                    payoff_agent, payoff_opp = PAYOFF_MATRIX[(agent_move, opponent_move)]
+                    agent_score += payoff_agent
+                    opponent_score += payoff_opp
+                    match_history.append({
+                        'round': round_num,
+                        'agent_move': agent_move,
+                        'opponent_move': opponent_move,
+                        'agent_payoff': payoff_agent,
+                        'opponent_payoff': payoff_opp,
+                        'agent_strategy': 'Claude',
+                        'opponent_strategy': opponent.strategy_name,
+                        'reasoning': reasoning
+                    })
+                    # Log to CSV
+                    log_row = {
+                        'generation': self.generation,
+                        'match_id': match_id,
+                        'round': round_num,
+                        'main_agent_strategy': 'Claude',
+                        'opponent_strategy': opponent.strategy_name,
+                        'main_agent_action': agent_move,
+                        'opponent_action': opponent_move,
+                        'main_agent_payoff': payoff_agent,
+                        'opponent_payoff': payoff_opp,
+                        'main_agent_total_score': agent_score,
+                        'opponent_total_score': opponent_score,
+                        'claude_reasoning': reasoning,
+                        'history_included': round_num > 1,
+                        'timestamp': datetime.now().isoformat()
+                    }
+                    log_round_to_csv(log_row)
+                    self.match_history = [
+                        {
+                            'agent_index': 0,
+                            'opponent_index': i,
+                            'agent_strategy': 'Claude',
+                            'opponent_strategy': opponent.strategy_name,
+                            'rounds': match_history
+                        }
+                    ]
+                    self.current_match_idx = 0
+                    self.current_round_idx = len(match_history)-1
                     self.root.after(0, self._show_current_step)
+                    self.root.after(0, lambda r=reasoning: self.claude_reason_var.set(r))
                     time.sleep(CONFIG['gui_update_delay'])
-                self.current_match_idx += 1
-                self.current_round_idx = 0
-            # Evolve population
-            self.agents = evolve_population(self.agents, CONFIG['eliminate_n'], CONFIG['clone_n'])
+                    games_played += 1
+            self.agents = [Agent(random.choice(CONFIG['strategies'])) for _ in range(CONFIG['num_agents'])]
         self.running = False
         self.start_btn.config(state=tk.NORMAL)
         self.pause_btn.config(state=tk.DISABLED)

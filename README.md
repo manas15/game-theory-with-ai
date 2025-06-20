@@ -119,9 +119,67 @@ Inspired by the [Evolution of Trust](https://ncase.me/trust/) explorable explana
 
 ---
 
+## CSV Output
+
+Each round of the simulation is logged to a CSV file (`trust_sim_results.csv`) with the following fields:
+
+- `generation`: The generation number.
+- `match_id`: Unique identifier for the match.
+- `round`: The round number within the match.
+- `main_agent_strategy`: The strategy of the main agent (can be 'Claude' if using Claude integration).
+- `opponent_strategy`: The strategy of the opponent agent.
+- `main_agent_action`: The action taken by the main agent ('TRUST' or 'CHEAT').
+- `opponent_action`: The action taken by the opponent agent.
+- `main_agent_payoff`: The payoff received by the main agent for this round.
+- `opponent_payoff`: The payoff received by the opponent for this round.
+- `main_agent_total_score`: Cumulative score for the main agent in the match so far.
+- `opponent_total_score`: Cumulative score for the opponent in the match so far.
+- `claude_reasoning`: If using Claude, the reasoning returned by the model for the main agent's move.
+- `history_included`: Whether the round included history in the prompt (boolean).
+- `timestamp`: ISO timestamp of the round.
+- `payoff_matrix`: The full payoff matrix used for the game, as a JSON string (e.g. `{"('TRUST', 'TRUST')": [2, 2], ...}`).
+
+This makes the simulation fully reproducible and suitable for research.
+
+---
+
+## Claude 3 Integration (Optional)
+
+The simulator can use Anthropic's Claude 3 model as the main agent. This requires:
+- `claude_prompt.py` (provided in this repo)
+- `claude_api_key.py` (not tracked in git; you must create this file with your API key)
+- The `requests` Python package
+
+Claude's decisions and reasoning are logged in the CSV for every round.
+
+---
+
+## Additional Setup for Claude Integration
+
+1. Install the `requests` package:
+   ```sh
+   pip3 install requests
+   ```
+2. Create a file named `claude_api_key.py` in the project directory with the following content:
+   ```python
+   CLAUDE_API_KEY = "sk-...your-anthropic-api-key..."
+   ```
+   **Do not commit this file to git.**
+
+---
+
+## .gitignore and Security
+
+- The `.gitignore` file ensures that sensitive files like `claude_api_key.py` and Python bytecode are not tracked by git.
+- Never share your API key or commit it to version control.
+
+---
+
 ## Recent Major Changes
 
-- All move logic and UI now use the full strings "TRUST" and "CHEAT" for clarity.
-- Strategy names updated to match new conventions (e.g., "Always Trust", "Always Cheat").
-- Payoff matrix updated to new rules for trust/cheat outcomes.
-- Code and UI refactored for consistency, readability, and ease of understanding. 
+- **CSV Logging:** Every round now logs the full payoff matrix as a JSON string for reproducibility.
+- **Claude 3 Integration:** The main agent can use Anthropic Claude 3 for decision making, with reasoning logged for each move.
+- **Setup:** Requires `requests` and a local `claude_api_key.py` for Claude integration.
+- **Security:** `.gitignore` added to protect sensitive files.
+
+# ... existing code ... 
