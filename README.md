@@ -4,16 +4,26 @@ This project simulates the evolution of trust using a population of agents playi
 
 ---
 
+## Simulation Mode
+
+This simulator runs in a single mode:
+
+- **Claude-vs-Strategies Mode:** The "main agent" is always powered by Anthropic's Claude 3 model, playing against a population of classic strategy agents. For each match, Claude receives the full round history and payoff matrix, and returns both its move and a short reasoning, which are logged and displayed.
+
+---
+
 ## Features
 
+- **Claude as Main Agent:** The main agent is always powered by Claude 3 (Anthropic), making decisions and providing reasoning for each move.
 - **Agent Strategies:** Includes classic and modern strategies like Always Trust, Always Cheat, Tit-for-Tat, Grudger, Detective, Simpleton, Random, and Copykitten.
-- **Tournament Simulation:** All agents play matches against each other in each generation.
+- **Tournament Simulation:** Claude plays a match against each strategy agent in the population for every generation.
 - **Evolution:** The worst-performing agents are eliminated, and the best are cloned for the next generation.
 - **GUI Visualization:** 
   - Shows a 2x2 payoff matrix for each match, using clear labels: "TRUST" and "CHEAT".
   - Displays the current agents and their strategies.
   - Animates through all matches and rounds.
   - Controls for Pause, Resume, Step Forward, and Step Backward.
+  - GUI displays Claude's move and reasoning for each round.
 
 ---
 
@@ -56,16 +66,19 @@ python3 trust_simulator.py
 
 ### Main Components
 
+- **Simulation Flow:**
+  - The main agent is always "Claude" (using the Anthropic API), and plays a match against each classic strategy agent in the population. For each round, the full match history is sent to Claude, which returns its move and a short reasoning.
+
 - **Agent & Strategy Classes:**  
-  Each agent is assigned a strategy. Strategies determine how agents play each round based on history. All moves are now represented as the full strings "TRUST" and "CHEAT" for maximum clarity.
+  Each agent is assigned a strategy. Strategies determine how agents play each round based on history. All moves are represented as the full strings "TRUST" and "CHEAT" for maximum clarity.
 
 - **Game Logic:**  
-  - `play_match_record`: Plays a match between two agents, records every round (moves and payoffs).
-  - `run_tournament_record`: Runs all possible matches for the current population, storing all match/round data for animation.
+  - For each match, the main simulation loop uses `generate_claude_prompt` and `call_claude` to get the main agent's move and reasoning for each round.
+  - Classic strategy agents use their respective algorithms to decide moves.
 
 - **Payoff Matrix:**
-  - The payoff matrix is now:
-    - Both TRUST: Agent +1, Opponent +1
+  - The payoff matrix is:
+    - Both TRUST: Agent +2, Opponent +2
     - Both CHEAT: Agent 0, Opponent 0
     - Agent TRUST, Opponent CHEAT: Agent -1, Opponent +3
     - Agent CHEAT, Opponent TRUST: Agent +3, Opponent -1
@@ -77,16 +90,9 @@ python3 trust_simulator.py
 - **GUI (Tkinter):**
   - **Matrix Display:** Shows the current round's moves and payoffs in a 2x2 matrix, with clear "TRUST"/"CHEAT" labels.
   - **Agent Info:** Displays the strategies of the two agents currently playing.
+  - GUI displays Claude's move and reasoning for each round, prominently.
   - **Controls:** Start, Pause, Resume, Step Forward, Step Backward, and Reset.
   - **Animation:** Animates through all matches and rounds, updating the matrix and agent info.
-
-### Animation Controls
-
-- **Start Simulation:** Begins the simulation and animates through all matches and rounds.
-- **Pause:** Pauses the animation.
-- **Resume:** Continues the animation from where it was paused.
-- **Step Forward/Backward:** Step through rounds and matches one at a time.
-- **Reset Simulation:** Resets everything to the initial state.
 
 ---
 
@@ -181,5 +187,18 @@ Claude's decisions and reasoning are logged in the CSV for every round.
 - **Claude 3 Integration:** The main agent can use Anthropic Claude 3 for decision making, with reasoning logged for each move.
 - **Setup:** Requires `requests` and a local `claude_api_key.py` for Claude integration.
 - **Security:** `.gitignore` added to protect sensitive files.
+
+---
+
+## How to Use Claude as Main Agent
+
+1. **Set up Claude integration** (see 'Claude 3 Integration' and 'Additional Setup' below).
+2. **Run the simulator** as usual. The main agent will be powered by Claude 3, playing against a population of classic strategy agents. For each match, Claude receives the full round history and payoff matrix, and returns both its move and a short reasoning.
+3. **View results:**
+   - The GUI will display Claude's move and reasoning for each round.
+   - The CSV log will include Claude's move, reasoning, and the full payoff matrix for every round.
+
+**Example:**
+- Claude is the main agent, playing against "Tit-for-Tat". For each round, the simulator sends the match history to Claude, which responds with a move ("TRUST" or "CHEAT") and a short explanation. This is shown in the GUI and logged in the CSV.
 
 # ... existing code ... 
