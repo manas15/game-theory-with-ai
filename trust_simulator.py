@@ -23,8 +23,8 @@ CONFIG = {
     'eliminate_n': 5,  # Number of worst to eliminate each generation
     'clone_n': 5,      # Number of best to clone each generation
     'strategies': [
-        'Always Cooperate',
-        'Always Defect',
+        'Always Trust',
+        'Always Cheat',
         'Tit-for-Tat',
         'Grudger',
         'Detective',
@@ -45,24 +45,24 @@ class Strategy:
     def __repr__(self):
         return self.name
 
-class AlwaysCooperate(Strategy):
+class AlwaysTrust(Strategy):
     def __init__(self):
-        super().__init__('Always Cooperate')
+        super().__init__('Always Trust')
     def decide(self, history):
-        return 'C'
+        return 'TRUST'
 
-class AlwaysDefect(Strategy):
+class AlwaysCheat(Strategy):
     def __init__(self):
-        super().__init__('Always Defect')
+        super().__init__('Always Cheat')
     def decide(self, history):
-        return 'D'
+        return 'CHEAT'
 
 class TitForTat(Strategy):
     def __init__(self):
         super().__init__('Tit-for-Tat')
     def decide(self, history):
         if not history:
-            return 'C'
+            return 'TRUST'
         return history[-1][0]
 
 class Grudger(Strategy):
@@ -72,10 +72,10 @@ class Grudger(Strategy):
     def decide(self, history):
         if not history:
             self.grudge = False
-            return 'C'
-        if any(opp == 'D' for opp, _ in history):
+            return 'TRUST'
+        if any(opp == 'CHEAT' for opp, _ in history):
             self.grudge = True
-        return 'D' if self.grudge else 'C'
+        return 'CHEAT' if self.grudge else 'TRUST'
 
 class Detective(Strategy):
     def __init__(self):
@@ -85,30 +85,30 @@ class Detective(Strategy):
         moves = len(history)
         if not self.switched:
             for opp, _ in history:
-                if opp == 'D':
+                if opp == 'CHEAT':
                     self.switched = True
                     break
         if self.switched:
             if not history:
-                return 'C'
+                return 'TRUST'
             return history[-1][0]
         else:
-            if moves == 0: return 'C'
-            if moves == 1: return 'D'
-            if moves == 2: return 'C'
-            if moves == 3: return 'C'
+            if moves == 0: return 'TRUST'
+            if moves == 1: return 'CHEAT'
+            if moves == 2: return 'TRUST'
+            if moves == 3: return 'TRUST'
             self.switched = True
-            return 'D'
+            return 'CHEAT'
 
 class Simpleton(Strategy):
     def __init__(self):
         super().__init__('Simpleton')
     def decide(self, history):
         if not history:
-            return 'C'
+            return 'TRUST'
         opp, own = history[-1]
-        if own == 'C' and opp == 'D':
-            return 'D'
+        if own == 'TRUST' and opp == 'CHEAT':
+            return 'CHEAT'
         else:
             return own
 
@@ -116,18 +116,18 @@ class RandomStrategy(Strategy):
     def __init__(self):
         super().__init__('Random')
     def decide(self, history):
-        return random.choice(['C', 'D'])
+        return random.choice(['TRUST', 'CHEAT'])
 
 class Copykitten(Strategy):
     def __init__(self):
         super().__init__('Copykitten')
     def decide(self, history):
         if len(history) < 2:
-            return 'C'
-        # Only defects if opponent defected twice in a row
-        if history[-1][0] == 'D' and history[-2][0] == 'D':
-            return 'D'
-        return 'C'
+            return 'TRUST'
+        # Only cheats if opponent cheated twice in a row
+        if history[-1][0] == 'CHEAT' and history[-2][0] == 'CHEAT':
+            return 'CHEAT'
+        return 'TRUST'
 
 # --- AGENT ---
 class Agent:
@@ -138,8 +138,8 @@ class Agent:
         self.history = []
     def _make_strategy(self, name):
         return {
-            'Always Cooperate': AlwaysCooperate(),
-            'Always Defect': AlwaysDefect(),
+            'Always Trust': AlwaysTrust(),
+            'Always Cheat': AlwaysCheat(),
             'Tit-for-Tat': TitForTat(),
             'Grudger': Grudger(),
             'Detective': Detective(),
@@ -154,51 +154,49 @@ class Agent:
     def clone(self):
         return Agent(self.strategy_name)
 
-# --- GAME LOGIC ---
-PAYOFF = {
-    ('C', 'C'): (2, 2),
-    ('C', 'D'): (-1, 3),
-    ('D', 'C'): (3, -1),
-    ('D', 'D'): (0, 0),
+# --- PAYOFF MATRIX LOGIC ---
+# Payoff Matrix: (Agent Move, Opponent Move) -> (Agent Points, Opponent Points)
+PAYOFF_MATRIX = {
+    ('TRUST', 'TRUST'): (1, 1),    # Both Trust
+    ('TRUST', 'CHEAT'): (-1, 3),   # Agent Trust, Opponent Cheat
+    ('CHEAT', 'TRUST'): (3, -1),   # Agent Cheat, Opponent Trust
+    ('CHEAT', 'CHEAT'): (0, 0),    # Both Cheat
 }
 
-def play_match_record(agent1, agent2, rounds):
-    agent1.history = []
-    agent2.history = []
+def play_match_record(agent, opponent, rounds):
+    agent.history = []
+    opponent.history = []
     match_history = []
     for _ in range(rounds):
-        move1 = agent1.strategy.decide(agent1.history)
-        move2 = agent2.strategy.decide(agent2.history)
-        payoff1, payoff2 = PAYOFF[(move1, move2)]
-        agent1.score += payoff1
-        agent2.score += payoff2
-        agent1.history.append((move2, move1))
-        agent2.history.append((move1, move2))
+        agent_move = agent.strategy.decide(agent.history)
+        opponent_move = opponent.strategy.decide(opponent.history)
+        payoff_agent, payoff_opp = PAYOFF_MATRIX[(agent_move, opponent_move)]
+        agent.score += payoff_agent
+        opponent.score += payoff_opp
+        agent.history.append((opponent_move, agent_move))
+        opponent.history.append((agent_move, opponent_move))
         match_history.append({
-            'move1': move1,
-            'move2': move2,
-            'payoff1': payoff1,
-            'payoff2': payoff2,
-            'agent1_strategy': agent1.strategy_name,
-            'agent2_strategy': agent2.strategy_name,
+            'agent_move': agent_move,
+            'opponent_move': opponent_move,
+            'agent_payoff': payoff_agent,
+            'opponent_payoff': payoff_opp,
+            'agent_strategy': agent.strategy_name,
+            'opponent_strategy': opponent.strategy_name,
         })
     return match_history
 
 def run_tournament_record(agents, rounds_per_game):
     matches = []
-    for i, a1 in enumerate(agents):
-        for j, a2 in enumerate(agents):
+    for i, agent in enumerate(agents):
+        for j, opponent in enumerate(agents):
             if i < j:
-                if isinstance(rounds_per_game, tuple):
-                    rounds = random.randint(*rounds_per_game)
-                else:
-                    rounds = rounds_per_game
-                match_history = play_match_record(a1, a2, rounds)
+                rounds = random.randint(*rounds_per_game) if isinstance(rounds_per_game, tuple) else rounds_per_game
+                match_history = play_match_record(agent, opponent, rounds)
                 matches.append({
-                    'agent1_index': i,
-                    'agent2_index': j,
-                    'agent1_strategy': a1.strategy_name,
-                    'agent2_strategy': a2.strategy_name,
+                    'agent_index': i,
+                    'opponent_index': j,
+                    'agent_strategy': agent.strategy_name,
+                    'opponent_strategy': opponent.strategy_name,
                     'rounds': match_history
                 })
     return matches
@@ -258,38 +256,87 @@ class TrustSimGUI:
         status_label = ttk.Label(top_frame, textvariable=self.status_var, font=("Arial", 12))
         status_label.pack(side=tk.LEFT, padx=10)
 
-        # Agent info
-        self.agent_info_frame = ttk.Frame(self.main_container)
-        self.agent_info_frame.pack(side=tk.TOP, fill=tk.X, pady=(0, 10))
-        self.agent1_label = ttk.Label(self.agent_info_frame, text="Agent 1: ", font=("Arial", 12))
-        self.agent1_label.pack(side=tk.LEFT, padx=20)
-        self.agent2_label = ttk.Label(self.agent_info_frame, text="Agent 2: ", font=("Arial", 12))
-        self.agent2_label.pack(side=tk.LEFT, padx=20)
+        # Main layout: left (agent), center (matrix), right (opponent)
+        main_frame = ttk.Frame(self.main_container)
+        main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Payoff matrix
-        self.matrix_frame = ttk.Frame(self.main_container)
-        self.matrix_frame.pack(expand=True)
+        # Stick figure for Main Agent (left)
+        self.agent_canvas = tk.Canvas(main_frame, width=70, height=120, bg='white', highlightthickness=0)
+        self.agent_canvas.grid(row=0, column=0, padx=10, pady=10)
+        self._draw_stick_figure(self.agent_canvas)
+        self.agent_name_label = ttk.Label(main_frame, text="Main Agent", font=("Arial", 12))
+        self.agent_name_label.grid(row=1, column=0)
+        self.agent_total_label = ttk.Label(main_frame, text="Total Points: 0", font=("Arial", 11))
+        self.agent_total_label.grid(row=2, column=0)
+        self.agent_round_label = ttk.Label(main_frame, text="", font=("Arial", 14))
+        self.agent_round_label.grid(row=0, column=0, sticky='s', pady=(170, 0))
+
+        # Center matrix with labels
+        matrix_outer = ttk.Frame(main_frame)
+        matrix_outer.grid(row=0, column=1, rowspan=2, padx=20, pady=10)
+
+        # Top labels (Opponent)
+        self.top_label_trust = ttk.Label(matrix_outer, text="Opponent TRUSTS", font=("Arial", 11))
+        self.top_label_trust.grid(row=0, column=1, padx=5, pady=2)
+        self.top_label_cheat = ttk.Label(matrix_outer, text="Opponent CHEATS", font=("Arial", 11))
+        self.top_label_cheat.grid(row=0, column=2, padx=5, pady=2)
+
+        # Side labels (Agent)
+        self.side_label_trust = ttk.Label(matrix_outer, text="Agent TRUSTS", font=("Arial", 11))
+        self.side_label_trust.grid(row=1, column=0, padx=5, pady=10)
+        self.side_label_cheat = ttk.Label(matrix_outer, text="Agent CHEATS", font=("Arial", 11))
+        self.side_label_cheat.grid(row=2, column=0, padx=5, pady=10)
+
+        # Matrix cells
         self.matrix_labels: list[list[tk.Label]] = [[None, None], [None, None]]  # type: ignore
-        choices = ['C', 'D']
-        for i, move1 in enumerate(choices):
-            for j, move2 in enumerate(choices):
-                payoff = PAYOFF[(move1, move2)]
-                label = tk.Label(self.matrix_frame, text=f"{move1} vs {move2}\nP1: {payoff[0]}, P2: {payoff[1]}",
-                                 width=18, height=5, borderwidth=2, relief="groove", bg='white', font=("Arial", 14))
-                label.grid(row=i, column=j, padx=10, pady=10)
+        choices = ['TRUST', 'CHEAT']
+        for i, agent_move in enumerate(choices):
+            for j, opponent_move in enumerate(choices):
+                payoff = PAYOFF_MATRIX[(agent_move, opponent_move)]
+                def sign(val):
+                    return f"+{val}" if val > 0 else (f"{val}" if val < 0 else "0")
+                label = tk.Label(matrix_outer, text=f"{self._move_name(agent_move)} vs {self._move_name(opponent_move)}\nA: {sign(payoff[0])}, O: {sign(payoff[1])}",
+                                 width=16, height=4, borderwidth=2, relief="groove", bg='white', font=("Arial", 13))
+                label.grid(row=1+i, column=1+j, padx=5, pady=5)
                 self.matrix_labels[i][j] = label  # type: ignore
+
+        # Stick figure for Opponent (right)
+        self.opp_canvas = tk.Canvas(main_frame, width=70, height=120, bg='white', highlightthickness=0)
+        self.opp_canvas.grid(row=0, column=2, padx=10, pady=10)
+        self._draw_stick_figure(self.opp_canvas)
+        self.opp_name_label = ttk.Label(main_frame, text="Opponent", font=("Arial", 12))
+        self.opp_name_label.grid(row=1, column=2)
+        self.opp_total_label = ttk.Label(main_frame, text="Total Points: 0", font=("Arial", 11))
+        self.opp_total_label.grid(row=2, column=2)
+        self.opp_round_label = ttk.Label(main_frame, text="", font=("Arial", 14))
+        self.opp_round_label.grid(row=0, column=2, sticky='s', pady=(170, 0))
+
+    def _draw_stick_figure(self, canvas):
+        # Head
+        canvas.create_oval(20, 20, 50, 50, fill='white', outline='black', width=2)
+        # Body
+        canvas.create_line(35, 50, 35, 90, fill='black', width=2)
+        # Arms
+        canvas.create_line(35, 60, 15, 80, fill='black', width=2)
+        canvas.create_line(35, 60, 55, 80, fill='black', width=2)
+        # Legs
+        canvas.create_line(35, 90, 20, 110, fill='black', width=2)
+        canvas.create_line(35, 90, 50, 110, fill='black', width=2)
+
+    def _move_name(self, move):
+        return move
 
     def highlight_cell(self, move1, move2):
         for row in self.matrix_labels:
             for label in row:
                 label.config(bg='white', fg='black')
-        idx1 = 0 if move1 == 'C' else 1
-        idx2 = 0 if move2 == 'C' else 1
+        idx1 = 0 if move1 == 'TRUST' else 1
+        idx2 = 0 if move2 == 'TRUST' else 1
         self.matrix_labels[idx1][idx2].config(bg='#90ee90', fg='black')
 
     def update_agent_labels(self, agent1, agent2):
-        self.agent1_label.config(text=f"Agent 1: {agent1['agent1_strategy']}")
-        self.agent2_label.config(text=f"Agent 2: {agent2['agent2_strategy']}")
+        self.agent_name_label.config(text=f"Main Agent: {agent1['agent_strategy']}")
+        self.opp_name_label.config(text=f"Opponent: {agent2['opponent_strategy']}")
 
     def reset_simulation(self):
         print("Resetting simulation...")
@@ -306,9 +353,13 @@ class TrustSimGUI:
         self.match_history = []
         self.current_match_idx = 0
         self.current_round_idx = 0
-        self.agent1_label.config(text="Agent 1: ")
-        self.agent2_label.config(text="Agent 2: ")
-        self.highlight_cell('C', 'C')
+        self.agent_name_label.config(text="Main Agent: ")
+        self.opp_name_label.config(text="Opponent: ")
+        self.agent_total_label.config(text="Total Points: 0")
+        self.opp_total_label.config(text="Total Points: 0")
+        self.agent_round_label.config(text="")
+        self.opp_round_label.config(text="")
+        self.highlight_cell('TRUST', 'TRUST')
         print("Simulation reset complete")
 
     def start_simulation(self):
@@ -377,7 +428,31 @@ class TrustSimGUI:
         match = self.match_history[self.current_match_idx]
         round_data = match['rounds'][self.current_round_idx]
         self.update_agent_labels(match, match)
-        self.highlight_cell(round_data['move1'], round_data['move2'])
+        self.highlight_cell(round_data['agent_move'], round_data['opponent_move'])
+        # Calculate running totals
+        agent_total = 0
+        opp_total = 0
+        for m in self.match_history[:self.current_match_idx]:
+            for r in m['rounds']:
+                agent_total += r['agent_payoff']
+                opp_total += r['opponent_payoff']
+        for r in match['rounds'][:self.current_round_idx+1]:
+            agent_total += r['agent_payoff']
+            opp_total += r['opponent_payoff']
+        self.agent_total_label.config(text=f"Total Points: {agent_total}")
+        self.opp_total_label.config(text=f"Total Points: {opp_total}")
+        # Show round result labels
+        payoff_agent = round_data['agent_payoff']
+        payoff_opp = round_data['opponent_payoff']
+        def payoff_color(val):
+            if val > 0:
+                return 'green'
+            elif val < 0:
+                return 'red'
+            else:
+                return 'gray'
+        self.agent_round_label.configure(text=f"{('+' if payoff_agent >= 0 else '')}{payoff_agent}", foreground=payoff_color(payoff_agent))
+        self.opp_round_label.configure(text=f"{('+' if payoff_opp >= 0 else '')}{payoff_opp}", foreground=payoff_color(payoff_opp))
         self.status_var.set(f"Gen {self.generation} | Match {self.current_match_idx+1}/{len(self.match_history)} | Round {self.current_round_idx+1}/{len(match['rounds'])}")
 
     def _run_simulation(self):

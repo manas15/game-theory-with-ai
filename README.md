@@ -6,11 +6,11 @@ This project simulates the evolution of trust using a population of agents playi
 
 ## Features
 
-- **Agent Strategies:** Includes classic strategies like Always Cooperate, Always Defect, Tit-for-Tat, Grudger, Detective, Simpleton, Random, and Copykitten.
+- **Agent Strategies:** Includes classic and modern strategies like Always Trust, Always Cheat, Tit-for-Tat, Grudger, Detective, Simpleton, Random, and Copykitten.
 - **Tournament Simulation:** All agents play matches against each other in each generation.
 - **Evolution:** The worst-performing agents are eliminated, and the best are cloned for the next generation.
 - **GUI Visualization:** 
-  - Shows a 2x2 payoff matrix for each match.
+  - Shows a 2x2 payoff matrix for each match, using clear labels: "TRUST" and "CHEAT".
   - Displays the current agents and their strategies.
   - Animates through all matches and rounds.
   - Controls for Pause, Resume, Step Forward, and Step Backward.
@@ -57,17 +57,25 @@ python3 trust_simulator.py
 ### Main Components
 
 - **Agent & Strategy Classes:**  
-  Each agent is assigned a strategy. Strategies determine how agents play each round based on history.
+  Each agent is assigned a strategy. Strategies determine how agents play each round based on history. All moves are now represented as the full strings "TRUST" and "CHEAT" for maximum clarity.
 
 - **Game Logic:**  
   - `play_match_record`: Plays a match between two agents, records every round (moves and payoffs).
   - `run_tournament_record`: Runs all possible matches for the current population, storing all match/round data for animation.
 
+- **Payoff Matrix:**
+  - The payoff matrix is now:
+    - Both TRUST: Agent +1, Opponent +1
+    - Both CHEAT: Agent 0, Opponent 0
+    - Agent TRUST, Opponent CHEAT: Agent -1, Opponent +3
+    - Agent CHEAT, Opponent TRUST: Agent +3, Opponent -1
+  - The code and UI use these full move names everywhere.
+
 - **Evolution:**  
   After each generation, the worst agents are eliminated and the best are cloned.
 
 - **GUI (Tkinter):**
-  - **Matrix Display:** Shows the current round's moves and payoffs in a 2x2 matrix.
+  - **Matrix Display:** Shows the current round's moves and payoffs in a 2x2 matrix, with clear "TRUST"/"CHEAT" labels.
   - **Agent Info:** Displays the strategies of the two agents currently playing.
   - **Controls:** Start, Pause, Resume, Step Forward, Step Backward, and Reset.
   - **Animation:** Animates through all matches and rounds, updating the matrix and agent info.
@@ -88,7 +96,7 @@ python3 trust_simulator.py
   Edit the `CONFIG` dictionary at the top of `trust_simulator.py`.
 
 - **Modify Payoff Matrix:**  
-  Edit the `PAYOFF` dictionary in `trust_simulator.py`.
+  Edit the `PAYOFF_MATRIX` dictionary in `trust_simulator.py`.
 
 ---
 
@@ -107,4 +115,13 @@ MIT License
 
 ## Acknowledgments
 
-Inspired by the [Evolution of Trust](https://ncase.me/trust/) explorable explanation. 
+Inspired by the [Evolution of Trust](https://ncase.me/trust/) explorable explanation.
+
+---
+
+## Recent Major Changes
+
+- All move logic and UI now use the full strings "TRUST" and "CHEAT" for clarity.
+- Strategy names updated to match new conventions (e.g., "Always Trust", "Always Cheat").
+- Payoff matrix updated to new rules for trust/cheat outcomes.
+- Code and UI refactored for consistency, readability, and ease of understanding. 
