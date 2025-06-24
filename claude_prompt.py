@@ -65,4 +65,7 @@ def call_claude(prompt, max_retries=1):
             if attempt < max_retries:
                 continue
             else:
-                raise RuntimeError(f"Claude response could not be parsed as JSON after {max_retries+1} attempts. Last response: {response.text}") 
+                # Instead of raising, return a safe fallback
+                return "TRUST", f"Claude error: see logs"
+    # Fallback in case all attempts fail
+    return "TRUST", "Claude error: see logs" 
